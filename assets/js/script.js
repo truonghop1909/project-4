@@ -313,30 +313,64 @@ const showAlert = (content = null, time = 3000, type = "alert--success") => {
 
         alertClose.addEventListener("click", () => {
             alertList.removeChild(newAlert);
-        })
-
-        setTimeout(() => {
+            setTimeout(() => {
             alertList.removeChild(newAlert);
         }, time);
+        })
     } 
 }
 // Hết Hiển thị thông báo
 
 // Form chat
 const formChat = document.querySelector("[chat] .inner-form");
+
 if(formChat) {
-  formChat.addEventListener("submit", (event) => {
+  // Preview Image
+  const upload = new FileUploadWithPreview.FileUploadWithPreview('upload-images', {
+    maxFileCount: 6,
+    multiple: true
+  });
+
+  //Hết Preview Image
+  formChat.addEventListener("submit", async (event) => {
     event.preventDefault();
     
     const content = formChat.content.value;
     const userId = auth.currentUser.uid;
+    const images = upload.cachedFileArray || [];
 
-    if(content && userId) {
+    if((content || images.length > 0) && userId) {
+      const imagesLink = [];
+      if(images.length > 0) {
+        const url = 'https://api.cloudinary.com/v1_1/dp3cw4o1l/image/upload';
+
+        const formData = new FormData();
+
+        for (let i = 0; i < images.length; i++) {
+          let file = images[i];
+          formData.append('file', file);
+          formData.append('upload_preset', 'Images');
+
+          await fetch(url, {
+            method: 'POST',
+            body: formData,
+          })
+            .then((response) => {
+              return response.json();
+            })
+            .then((data) => {
+              imagesLink.push(data.url);
+            });
+        }
+      }
       set(push(ref(db, "chats")), {
         content: content,
+        images: imagesLink,
         userId: userId,
       })
+
       formChat.content.value = "";
+      upload.resetPreviewPanel(); // clear all selected images
     }
   })
 }
@@ -346,21 +380,28 @@ if(formChat) {
 const chatBody = document.querySelector("[chat] .inner-body");
 
 if(chatBody) {
-  const chatsRef = ref(db, 'chats');
   onChildAdded(chatsRef, (data) => {
     const key = data.key;
     const userId = data.val().userId;
     const content = data.val().content;
+    const images = data.val().images;
 
     get(child(dbRef, `users/${userId}`)).then((snapshot) => {
       if (snapshot.exists()) {
         const fullName = snapshot.val().fullName;
 
         const newChat = document.createElement("div");
+        newChat.setAttribute("chat-key", key);
         let htmlFullName = "";
+        let htmlButtonDetele = "";
 
         if(userId == currentUser.uid) {
           newChat.classList.add("inner-outgoing");
+          htmlButtonDetele = `
+            <button class="button-delete">
+            <i class="fa-regular fa-trash-can"></i>
+            </button>
+          `
         }
         else {
           newChat.classList.add("inner-incoming");
@@ -370,27 +411,95 @@ if(chatBody) {
             </div>
           `
         }
-        
-        newChat.innerHTML = `
-          ${htmlFullName}
+
+        let hmtlContent = "";
+        if(content) {
+          hmtlContent = `
           <div class="inner-content">
             ${content}
           </div>
+          `;
+        }
+        let htmlImages = "";
+        if(images && images.length > 0) {
+          htmlImages += `<div class ="inner-images">`;
+          for(const image of images) {
+            htmlImages += `<img src="${image}"/>`;
+          }
+          htmlImages += `</div>`;
+        }
+        
+        newChat.innerHTML = `
+          ${htmlFullName}
+          ${hmtlContent}
+          ${htmlImages}
+          ${htmlButtonDetele}
         `
         chatBody.appendChild(newChat);
 
         chatBody.scrollTop = chatBody.scrollHeight;
+
+        // Xóa tin nhắn
+        const buttonDelete = newChat.querySelector(".button-delete");
+        if(buttonDelete) {
+          buttonDelete.addEventListener("click", (event) => {
+            remove(ref(db, '/chats/' + key)).then(() => {
+              chatBody.removeChild(newChat);
+            });
+          })
+        }
       } else {
         console.log("No data available");
       }
     }).catch((error) => {
       console.error(error);
     });
-
-    
   });
 }
 //Hết Hiển thị tin nhắn mặc định
+
+// Lắng nghe xem có tin nhắn nào bị xóa không
+onChildRemoved(chatsRef, (data) => {
+  const key = data.key;
+  const chatItem = chatBody.querySelector(`[chat-key="${key}"]`);
+  if(chatItem) {
+    chatItem.remove();
+  }
+});
+// Hết Lắng nghe xem có tin nhắn nào bị xóa không
+
+//Chèn Icon
+const emojiPicker = document.querySelector('emoji-picker');
+
+if(emojiPicker) {
+  const inputChat = document.querySelector(".chat .inner-form input[name='content']");
+  const button = document.querySelector(".button-icon");
+  const buttonIcon = document.querySelector(".button-icon i")
+  const tooltip = document.querySelector('.tooltip');
+  Popper.createPopper(button, tooltip);
+
+  button.addEventListener("click", event => {
+    tooltip.classList.toggle('shown');
+  })
+  
+  emojiPicker.addEventListener('emoji-click', event => {
+    const icon = event.detail.unicode;
+    inputChat.value = inputChat.value + icon;
+  });
+
+  document.addEventListener("click", (event) => {
+    if(!emojiPicker.contains(event.target) && !button.contains(event.target) && !buttonIcon.contains(event.target)) {
+      tooltip.classList.remove('shown');
+    }
+  })
+}
+//Hết Chèn Icon
+
+
+
+
+
+
 
 
 
