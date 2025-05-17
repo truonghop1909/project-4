@@ -80,6 +80,7 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
+  padding-bottom: 10px;
 }
 
 .chat .inner-outgoing .inner-images {
